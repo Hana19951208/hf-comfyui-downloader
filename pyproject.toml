@@ -1,0 +1,20 @@
+[project]
+name = "hf-comfyui-downloader"
+version = "0.1.0"
+description = "Tkinter tool for listing Hugging Face repo files and downloading them into ComfyUI model folders."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "huggingface_hub>=0.31.0",
+    "socksio>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["app", "download_service", "hf_client", "hf_utils", "main"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
