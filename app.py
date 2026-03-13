@@ -12,7 +12,9 @@ from download_service import DownloadService
 from hf_client import HuggingFaceRepositoryClient
 from hf_utils import (
     DEFAULT_HF_ENDPOINT,
+    DEFAULT_PROXY_STRATEGY,
     DownloadRequest,
+    PROXY_STRATEGIES,
     RepoFile,
     RepoRef,
     format_size,
@@ -48,6 +50,7 @@ class DownloaderApp(Frame):
         self.progress_var = StringVar(value="进度: -")
         self.speed_var = StringVar(value="速度: -")
         self.eta_var = StringVar(value="剩余时间: -")
+        self.proxy_strategy_var = StringVar(value=self._proxy_label_from_id(DEFAULT_PROXY_STRATEGY))
         self.quick_dir_var = StringVar(value="选择常用目录")
         self.available_model_dirs: list[str] = []
         self.download_in_progress = False
@@ -104,26 +107,36 @@ class DownloaderApp(Frame):
             row=1, column=2, sticky="e", padx=(0, 10), pady=6
         )
 
-        Label(left_panel, text="仓库信息:").grid(row=2, column=0, sticky="nw", padx=10, pady=6)
+        Label(left_panel, text="代理策略:").grid(row=2, column=0, sticky="w", padx=10, pady=6)
+        self.proxy_strategy_box = ttk.Combobox(
+            left_panel,
+            textvariable=self.proxy_strategy_var,
+            values=[item["label"] for item in PROXY_STRATEGIES],
+            state="readonly",
+            height=len(PROXY_STRATEGIES),
+        )
+        self.proxy_strategy_box.grid(row=2, column=1, columnspan=2, sticky="ew", padx=(0, 10), pady=6)
+
+        Label(left_panel, text="仓库信息:").grid(row=3, column=0, sticky="nw", padx=10, pady=6)
         Label(
             left_panel,
             textvariable=self.repo_info_var,
             justify="left",
             anchor="w",
             wraplength=420,
-        ).grid(row=2, column=1, columnspan=2, sticky="ew", padx=(0, 10), pady=6)
+        ).grid(row=3, column=1, columnspan=2, sticky="ew", padx=(0, 10), pady=6)
 
-        Label(left_panel, text="文件列表:").grid(row=3, column=0, sticky="w", padx=10, pady=6)
+        Label(left_panel, text="文件列表:").grid(row=4, column=0, sticky="w", padx=10, pady=6)
         self.file_tree = ttk.Treeview(left_panel, columns=("size",), show="tree headings", selectmode="browse")
         self.file_tree.heading("#0", text="文件路径")
         self.file_tree.heading("size", text="大小")
         self.file_tree.column("#0", width=360, stretch=True)
         self.file_tree.column("size", width=110, anchor="e", stretch=False)
-        self.file_tree.grid(row=4, column=0, columnspan=3, sticky="nsew", padx=10, pady=(0, 10))
-        left_panel.rowconfigure(4, weight=1)
+        self.file_tree.grid(row=5, column=0, columnspan=3, sticky="nsew", padx=10, pady=(0, 10))
+        left_panel.rowconfigure(5, weight=1)
 
         action_bar = Frame(left_panel)
-        action_bar.grid(row=5, column=0, columnspan=3, sticky="ew", padx=10, pady=(0, 10))
+        action_bar.grid(row=6, column=0, columnspan=3, sticky="ew", padx=10, pady=(0, 10))
         action_bar.columnconfigure(0, weight=1)
         Button(action_bar, text="下载选中文件", command=self.download_selected).grid(
             row=0, column=0, sticky="ew", padx=(0, 8)
@@ -244,6 +257,7 @@ class DownloaderApp(Frame):
         self.status_var.set(f"已加载 {len(files)} 个文件")
         self.append_log(f"读取完成: {repo.repo_id}，共 {len(files)} 个文件。")
         self.append_log(f"解析端点: {endpoint}")
+        self.append_log(f"当前代理策略: {self.selected_proxy_strategy_id()}")
 
     def download_selected(self) -> None:
         if self.current_repo is None:
@@ -284,7 +298,7 @@ class DownloaderApp(Frame):
         self.append_log(f"准备下载: {filename}")
         threading.Thread(
             target=self._download_worker,
-            args=(request, expected_size, self.current_endpoint),
+            args=(request, expected_size, self.current_endpoint, self.selected_proxy_strategy_id()),
             daemon=True,
         ).start()
 
@@ -293,6 +307,7 @@ class DownloaderApp(Frame):
         request: DownloadRequest,
         expected_size: int,
         endpoint: str,
+        proxy_strategy: str,
     ) -> None:
         progress_thread = threading.Thread(
             target=self._track_download_progress,
@@ -301,7 +316,12 @@ class DownloaderApp(Frame):
         )
         progress_thread.start()
         try:
-            exit_code = self.downloader.run_download(request, on_log=self._thread_safe_log, endpoint=endpoint)
+            exit_code = self.downloader.run_download(
+                request,
+                on_log=self._thread_safe_log,
+                endpoint=endpoint,
+                proxy_strategy=proxy_strategy,
+            )
             if exit_code != 0:
                 raise RuntimeError(f"hf download 执行失败，退出码: {exit_code}")
             self.after(0, lambda: self._finish_download(request.filename, request.target_dir))
@@ -364,6 +384,20 @@ class DownloaderApp(Frame):
         self.progress_var.set(progress_text(current_size, expected_size))
         self.speed_var.set(f"速度: {format_size(int(speed))}/s")
         self.eta_var.set(eta_text(current_size, expected_size, speed))
+
+    def selected_proxy_strategy_id(self) -> str:
+        selected_label = self.proxy_strategy_var.get()
+        for item in PROXY_STRATEGIES:
+            if item["label"] == selected_label:
+                return item["id"]
+        return DEFAULT_PROXY_STRATEGY
+
+    @staticmethod
+    def _proxy_label_from_id(strategy_id: str) -> str:
+        for item in PROXY_STRATEGIES:
+            if item["id"] == strategy_id:
+                return item["label"]
+        return PROXY_STRATEGIES[0]["label"]
 
 
 def progress_text(current_size: int, expected_size: int) -> str:

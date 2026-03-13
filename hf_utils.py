@@ -9,7 +9,13 @@ from huggingface_hub._local_folder import _short_hash, get_local_download_paths
 
 
 DEFAULT_HF_ENDPOINT = "https://hf-mirror.com"
+DEFAULT_PROXY_STRATEGY = "mirror_direct_xethub_proxy"
 HUGGINGFACE_HOSTS = {"huggingface.co", "www.huggingface.co", "hf-mirror.com", "www.hf-mirror.com"}
+PROXY_STRATEGIES = [
+    {"id": "mirror_direct_xethub_proxy", "label": "镜像直连，xethub 走代理"},
+    {"id": "all_direct", "label": "全部直连"},
+    {"id": "all_proxy", "label": "全部走代理"},
+]
 
 
 @dataclass(frozen=True)
@@ -112,10 +118,11 @@ def resolve_hf_endpoint(url: str | None = None) -> str:
     return DEFAULT_HF_ENDPOINT
 
 
-def build_runtime_env(endpoint: str | None = None) -> dict[str, str]:
+def build_runtime_env(endpoint: str | None = None, proxy_strategy: str = DEFAULT_PROXY_STRATEGY) -> dict[str, str]:
     env = dict(os.environ)
     env["HF_ENDPOINT"] = endpoint or DEFAULT_HF_ENDPOINT
-    no_proxy_hosts = [
+
+    managed_hosts = [
         "hf-mirror.com",
         ".hf-mirror.com",
         "huggingface.co",
@@ -124,13 +131,35 @@ def build_runtime_env(endpoint: str | None = None) -> dict[str, str]:
         ".xethub.hf.co",
         "cas-bridge.xethub.hf.co",
     ]
+    no_proxy_hosts = no_proxy_hosts_for_strategy(proxy_strategy)
     current_no_proxy = env.get("NO_PROXY", "")
     current_entries = [entry.strip() for entry in current_no_proxy.split(",") if entry.strip()]
+    current_entries = [entry for entry in current_entries if entry not in managed_hosts]
     for host in no_proxy_hosts:
         if host not in current_entries:
             current_entries.append(host)
     env["NO_PROXY"] = ",".join(current_entries)
     return env
+
+
+def no_proxy_hosts_for_strategy(proxy_strategy: str) -> list[str]:
+    mirror_hosts = [
+        "hf-mirror.com",
+        ".hf-mirror.com",
+        "huggingface.co",
+        ".huggingface.co",
+    ]
+    xet_hosts = [
+        "xethub.hf.co",
+        ".xethub.hf.co",
+        "cas-bridge.xethub.hf.co",
+    ]
+
+    if proxy_strategy == "all_direct":
+        return [*mirror_hosts, *xet_hosts]
+    if proxy_strategy == "all_proxy":
+        return []
+    return mirror_hosts
 
 
 def list_model_subdirectories(root_dir: str) -> list[str]:

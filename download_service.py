@@ -20,11 +20,13 @@ class DownloadService:
         request: DownloadRequest,
         on_log: LogCallback | None = None,
         endpoint: str | None = None,
+        proxy_strategy: str = "mirror_direct_xethub_proxy",
     ) -> int:
         command = build_hf_download_command(request)
         if on_log:
             on_log("执行命令: " + self._format_command(command))
             on_log(f"下载端点: {endpoint or DEFAULT_HF_ENDPOINT}")
+            on_log(f"代理策略: {proxy_strategy}")
 
         process = subprocess.Popen(
             command,
@@ -33,7 +35,7 @@ class DownloadService:
             text=True,
             encoding="utf-8",
             errors="replace",
-            env=build_runtime_env(endpoint),
+            env=build_runtime_env(endpoint, proxy_strategy),
         )
 
         if process.stdout is not None:

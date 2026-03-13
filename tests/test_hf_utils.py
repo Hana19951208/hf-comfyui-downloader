@@ -3,8 +3,10 @@ import unittest
 from pathlib import Path
 
 from hf_utils import (
+    DEFAULT_PROXY_STRATEGY,
     DownloadRequest,
     DEFAULT_HF_ENDPOINT,
+    PROXY_STRATEGIES,
     build_hf_download_command,
     build_runtime_env,
     format_size,
@@ -115,11 +117,30 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(endpoint, DEFAULT_HF_ENDPOINT)
 
     def test_build_runtime_env_sets_endpoint(self) -> None:
-        env = build_runtime_env("https://hf-mirror.com")
+        env = build_runtime_env("https://hf-mirror.com", DEFAULT_PROXY_STRATEGY)
 
         self.assertEqual(env["HF_ENDPOINT"], "https://hf-mirror.com")
         self.assertIn("hf-mirror.com", env["NO_PROXY"])
+        self.assertNotIn("xethub.hf.co", env["NO_PROXY"])
+
+    def test_build_runtime_env_for_all_direct(self) -> None:
+        env = build_runtime_env("https://hf-mirror.com", "all_direct")
+
+        self.assertIn("hf-mirror.com", env["NO_PROXY"])
         self.assertIn("xethub.hf.co", env["NO_PROXY"])
+        self.assertIn("cas-bridge.xethub.hf.co", env["NO_PROXY"])
+
+    def test_build_runtime_env_for_all_proxy(self) -> None:
+        env = build_runtime_env("https://hf-mirror.com", "all_proxy")
+
+        self.assertEqual(env["HF_ENDPOINT"], "https://hf-mirror.com")
+        self.assertNotIn("hf-mirror.com", env.get("NO_PROXY", ""))
+        self.assertNotIn("xethub.hf.co", env.get("NO_PROXY", ""))
+
+    def test_proxy_strategies_contains_default(self) -> None:
+        strategy_ids = [item["id"] for item in PROXY_STRATEGIES]
+
+        self.assertIn(DEFAULT_PROXY_STRATEGY, strategy_ids)
 
 
 class ModelDirectoryTests(unittest.TestCase):
